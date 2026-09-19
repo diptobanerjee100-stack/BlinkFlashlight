@@ -1,24 +1,35 @@
 name: Build Blink Flashlight APK
 
 on:
-  workflow_dispatch:
   push:
-    branches:
-      - main
+    branches: [main]
+  workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+
       - name: Create project
         run: |
-          mkdir -p BlinkFlashlight/app/src/main/java/com/ark/blinkflashlight
-          mkdir -p BlinkFlashlight/app/src/main/res/drawable
-          mkdir -p BlinkFlashlight/app/src/main/res/values
-          mkdir -p BlinkFlashlight/.github/workflows
+          mkdir -p app/src/main/java/com/ark/blinkflashlight
 
-          cat > BlinkFlashlight/settings.gradle <<'EOF'
+          cat > settings.gradle <<'EOF'
           pluginManagement {
               repositories {
                   google()
@@ -39,17 +50,17 @@ jobs:
           include(":app")
           EOF
 
-          cat > BlinkFlashlight/build.gradle <<'EOF'
+          cat > build.gradle <<'EOF'
           plugins {
               id 'com.android.application' version '8.5.2' apply false
           }
           EOF
 
-          cat > BlinkFlashlight/gradle.properties <<'EOF'
-          org.gradle.jvmargs=-Xmx2g -Dfile.encoding=UTF-8
+          cat > gradle.properties <<'EOF'
+          android.useAndroidX=true
           EOF
 
-          cat > BlinkFlashlight/app/build.gradle <<'EOF'
+          cat > app/build.gradle <<'EOF'
           plugins {
               id 'com.android.application'
           }
@@ -68,112 +79,208 @@ jobs:
           }
           EOF
 
-          cat > BlinkFlashlight/app/src/main/AndroidManifest.xml <<'EOF'
-          <?xml version="1.0" encoding="utf-8"?>
+          cat > app/src/main/AndroidManifest.xml <<'EOF'
           <manifest xmlns:android="http://schemas.android.com/apk/res/android">
               <uses-permission android:name="android.permission.CAMERA"/>
-              <uses-feature
-                  android:name="android.hardware.camera.flash"
-                  android:required="false"/>
 
               <application
                   android:theme="@android:style/Theme.Material.NoActionBar"
-                  android:label="Blink Flashlight">
+                  android:label="Blink Flashlight"
+                  android:allowBackup="false"
+                  android:supportsRtl="true">
+
                   <activity
                       android:name=".MainActivity"
+                      android:screenOrientation="portrait"
                       android:exported="true">
+
                       <intent-filter>
                           <action android:name="android.intent.action.MAIN"/>
                           <category android:name="android.intent.category.LAUNCHER"/>
                       </intent-filter>
+
                   </activity>
               </application>
           </manifest>
           EOF
 
-          cat > BlinkFlashlight/app/src/main/java/com/ark/blinkflashlight/MainActivity.java <<'EOF'
+          cat > app/src/main/java/com/ark/blinkflashlight/MainActivity.java <<'EOF'
           package com.ark.blinkflashlight;
 
           import android.Manifest;
           import android.app.Activity;
-          import android.content.Context;
-          import android.content.pm.PackageManager;
-          import android.graphics.Color;
-          import android.hardware.camera2.CameraAccessException;
-          import android.hardware.camera2.CameraCharacteristics;
-          import android.hardware.camera2.CameraManager;
           import android.os.Bundle;
           import android.os.Handler;
-          import android.os.Looper;
+          import android.content.pm.PackageManager;
+          import android.hardware.camera2.CameraCharacteristics;
+          import android.hardware.camera2.CameraManager;
+          import android.graphics.Color;
           import android.view.Gravity;
-          import android.widget.Button;
-          import android.widget.LinearLayout;
-          import android.widget.SeekBar;
-          import android.widget.TextView;
+          import android.view.View;
+          import android.widget.*;
 
           public class MainActivity extends Activity {
 
-              private static final int REQUEST_CAMERA = 100;
-              private final Handler handler = new Handler(Looper.getMainLooper());
+              CameraManager cameraManager;
+              String cameraId;
+              Handler handler = new Handler();
+              boolean running = false;
+              boolean light = false;
+              int speed = 500;
 
-              private CameraManager cameraManager;
-              private String cameraId;
-              private Button button;
-              private TextView status;
-              private TextView speed;
-              private boolean blinking = false;
-              private boolean torchOn = false;
-              private int interval = 500;
-
-              private final Runnable blink = new Runnable() {
-                  @Override public void run() {
-                      if (!blinking) return;
-                      setTorch(!torchOn);
-                      handler.postDelayed(this, interval);
+              Runnable blink = new Runnable() {
+                  public void run() {
+                      if (!running) return;
+                      light = !light;
+                      try {
+                          cameraManager.setTorchMode(cameraId, light);
+                      } catch (Exception e) {}
+                      handler.postDelayed(this, speed);
                   }
               };
 
               @Override
-              protected void onCreate(Bundle state) {
-                  super.onCreate(state);
-
-                  getWindow().setStatusBarColor(Color.rgb(10,10,11));
-                  getWindow().setNavigationBarColor(Color.rgb(10,10,11));
-
-                  cameraManager =
-                      (CameraManager)getSystemService(Context.CAMERA_SERVICE);
+              protected void onCreate(Bundle b) {
+                  super.onCreate(b);
 
                   LinearLayout root = new LinearLayout(this);
                   root.setOrientation(LinearLayout.VERTICAL);
                   root.setGravity(Gravity.CENTER);
                   root.setPadding(40,40,40,40);
-                  root.setBackgroundColor(Color.rgb(10,10,11));
+                  root.setBackgroundColor(Color.rgb(18,18,18));
 
                   TextView title = new TextView(this);
-                  title.setText("Blink");
+                  title.setText("BLINK FLASHLIGHT");
                   title.setTextColor(Color.WHITE);
-                  title.setTextSize(30);
+                  title.setTextSize(24);
                   title.setGravity(Gravity.CENTER);
 
-                  status = new TextView(this);
-                  status.setText("Ready");
-                  status.setTextColor(Color.GRAY);
-                  status.setTextSize(15);
-                  status.setGravity(Gravity.CENTER);
-
-                  button = new Button(this);
+                  Button button = new Button(this);
                   button.setText("START");
-                  button.setTextSize(16);
-                  button.setOnClickListener(v -> toggle());
+                  button.setTextSize(18);
 
-                  speed = new TextView(this);
-                  speed.setText("500 ms");
-                  speed.setTextColor(Color.LTGRAY);
-                  speed.setGravity(Gravity.CENTER);
+                  TextView label = new TextView(this);
+                  label.setText("Blink speed");
+                  label.setTextColor(Color.LTGRAY);
+                  label.setGravity(Gravity.CENTER);
 
                   SeekBar bar = new SeekBar(this);
                   bar.setMax(1400);
                   bar.setProgress(400);
+
+                  root.addView(title);
+                  root.addView(button);
+                  root.addView(label);
+                  root.addView(bar);
+
+                  setContentView(root);
+
+                  cameraManager = (CameraManager)getSystemService(CAMERA_SERVICE);
+
+                  try {
+                      for (String id : cameraManager.getCameraIdList()) {
+                          CameraCharacteristics c =
+                              cameraManager.getCameraCharacteristics(id);
+
+                          Boolean flash =
+                              c.get(CameraCharacteristics.FLASH_INFO_AVAILABLE);
+
+                          Integer facing =
+                              c.get(CameraCharacteristics.LENS_FACING);
+
+                          if (Boolean.TRUE.equals(flash) &&
+                              (facing == null ||
+                               facing == CameraCharacteristics.LENS_FACING_BACK)) {
+                              cameraId = id;
+                              break;
+                          }
+                      }
+                  } catch (Exception e) {}
+
                   bar.setOnSeekBarChangeListener(
                       new SeekBar.OnSeekBarChangeListener() {
-                          public void on
+                          public void onProgressChanged(
+                              SeekBar s, int p, boolean fromUser) {
+                              speed = 100 + p;
+                          }
+                          public void onStartTrackingTouch(SeekBar s) {}
+                          public void onStopTrackingTouch(SeekBar s) {}
+                      });
+
+                  button.setOnClickListener(v -> {
+                      if (cameraId == null) {
+                          Toast.makeText(this,
+                              "No flashlight found",
+                              Toast.LENGTH_SHORT).show();
+                          return;
+                      }
+
+                      if (checkSelfPermission(Manifest.permission.CAMERA)
+                          != PackageManager.PERMISSION_GRANTED) {
+                          requestPermissions(
+                              new String[]{Manifest.permission.CAMERA}, 10);
+                          return;
+                      }
+
+                      if (running) {
+                          stopBlink();
+                          button.setText("START");
+                      } else {
+                          running = true;
+                          button.setText("STOP");
+                          handler.post(blink);
+                      }
+                  });
+              }
+
+              void stopBlink() {
+                  running = false;
+                  handler.removeCallbacks(blink);
+                  try {
+                      if (cameraId != null)
+                          cameraManager.setTorchMode(cameraId, false);
+                  } catch (Exception e) {}
+                  light = false;
+              }
+
+              @Override
+              public void onPause() {
+                  super.onPause();
+                  stopBlink();
+              }
+
+              @Override
+              public void onDestroy() {
+                  stopBlink();
+                  super.onDestroy();
+              }
+
+              @Override
+              public void onRequestPermissionsResult(
+                  int requestCode, String[] permissions, int[] results) {
+                  super.onRequestPermissionsResult(
+                      requestCode, permissions, results);
+
+                  if (requestCode == 10 &&
+                      results.length > 0 &&
+                      results[0] == PackageManager.PERMISSION_GRANTED) {
+                      running = true;
+                      handler.post(blink);
+                  }
+              }
+          }
+          EOF
+
+      - name: Build APK
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.7'
+
+      - name: Assemble APK
+        run: gradle assembleDebug
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: BlinkFlashlight-APK
+          path: app/build/outputs/apk/debug/app-debug.apk
