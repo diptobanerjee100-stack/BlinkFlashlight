@@ -19,11 +19,10 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-
       - name: Install Android SDK
-        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+        run: |
+          yes | sdkmanager --licenses >/dev/null 2>&1 || true
+          sdkmanager "platforms;android-35" "build-tools;35.0.0"
 
       - name: Create project
         run: |
@@ -81,6 +80,7 @@ jobs:
 
           cat > app/src/main/AndroidManifest.xml <<'EOF'
           <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
               <uses-permission android:name="android.permission.CAMERA"/>
 
               <application
@@ -101,6 +101,7 @@ jobs:
 
                   </activity>
               </application>
+
           </manifest>
           EOF
 
@@ -116,7 +117,6 @@ jobs:
           import android.hardware.camera2.CameraManager;
           import android.graphics.Color;
           import android.view.Gravity;
-          import android.view.View;
           import android.widget.*;
 
           public class MainActivity extends Activity {
@@ -131,10 +131,14 @@ jobs:
               Runnable blink = new Runnable() {
                   public void run() {
                       if (!running) return;
+
                       light = !light;
+
                       try {
                           cameraManager.setTorchMode(cameraId, light);
-                      } catch (Exception e) {}
+                      } catch (Exception e) {
+                      }
+
                       handler.postDelayed(this, speed);
                   }
               };
@@ -146,8 +150,8 @@ jobs:
                   LinearLayout root = new LinearLayout(this);
                   root.setOrientation(LinearLayout.VERTICAL);
                   root.setGravity(Gravity.CENTER);
-                  root.setPadding(40,40,40,40);
-                  root.setBackgroundColor(Color.rgb(18,18,18));
+                  root.setPadding(40, 40, 40, 40);
+                  root.setBackgroundColor(Color.rgb(18, 18, 18));
 
                   TextView title = new TextView(this);
                   title.setText("BLINK FLASHLIGHT");
@@ -175,10 +179,12 @@ jobs:
 
                   setContentView(root);
 
-                  cameraManager = (CameraManager)getSystemService(CAMERA_SERVICE);
+                  cameraManager =
+                      (CameraManager) getSystemService(CAMERA_SERVICE);
 
                   try {
                       for (String id : cameraManager.getCameraIdList()) {
+
                           CameraCharacteristics c =
                               cameraManager.getCameraCharacteristics(id);
 
@@ -190,42 +196,66 @@ jobs:
 
                           if (Boolean.TRUE.equals(flash) &&
                               (facing == null ||
-                               facing == CameraCharacteristics.LENS_FACING_BACK)) {
+                               facing ==
+                               CameraCharacteristics.LENS_FACING_BACK)) {
+
                               cameraId = id;
                               break;
                           }
                       }
-                  } catch (Exception e) {}
+                  } catch (Exception e) {
+                  }
 
                   bar.setOnSeekBarChangeListener(
                       new SeekBar.OnSeekBarChangeListener() {
+
                           public void onProgressChanged(
-                              SeekBar s, int p, boolean fromUser) {
+                              SeekBar s,
+                              int p,
+                              boolean fromUser) {
+
                               speed = 100 + p;
                           }
-                          public void onStartTrackingTouch(SeekBar s) {}
-                          public void onStopTrackingTouch(SeekBar s) {}
+
+                          public void onStartTrackingTouch(SeekBar s) {
+                          }
+
+                          public void onStopTrackingTouch(SeekBar s) {
+                          }
                       });
 
                   button.setOnClickListener(v -> {
+
                       if (cameraId == null) {
-                          Toast.makeText(this,
+                          Toast.makeText(
+                              this,
                               "No flashlight found",
-                              Toast.LENGTH_SHORT).show();
+                              Toast.LENGTH_SHORT
+                          ).show();
                           return;
                       }
 
-                      if (checkSelfPermission(Manifest.permission.CAMERA)
-                          != PackageManager.PERMISSION_GRANTED) {
+                      if (checkSelfPermission(
+                              Manifest.permission.CAMERA)
+                              != PackageManager.PERMISSION_GRANTED) {
+
                           requestPermissions(
-                              new String[]{Manifest.permission.CAMERA}, 10);
+                              new String[]{
+                                  Manifest.permission.CAMERA
+                              },
+                              10
+                          );
+
                           return;
                       }
 
                       if (running) {
+
                           stopBlink();
                           button.setText("START");
+
                       } else {
+
                           running = true;
                           button.setText("STOP");
                           handler.post(blink);
@@ -234,36 +264,55 @@ jobs:
               }
 
               void stopBlink() {
+
                   running = false;
+
                   handler.removeCallbacks(blink);
+
                   try {
-                      if (cameraId != null)
-                          cameraManager.setTorchMode(cameraId, false);
-                  } catch (Exception e) {}
+                      if (cameraId != null) {
+                          cameraManager.setTorchMode(
+                              cameraId,
+                              false
+                          );
+                      }
+                  } catch (Exception e) {
+                  }
+
                   light = false;
               }
 
               @Override
               public void onPause() {
+
                   super.onPause();
                   stopBlink();
               }
 
               @Override
               public void onDestroy() {
+
                   stopBlink();
                   super.onDestroy();
               }
 
               @Override
               public void onRequestPermissionsResult(
-                  int requestCode, String[] permissions, int[] results) {
+                  int requestCode,
+                  String[] permissions,
+                  int[] results) {
+
                   super.onRequestPermissionsResult(
-                      requestCode, permissions, results);
+                      requestCode,
+                      permissions,
+                      results
+                  );
 
                   if (requestCode == 10 &&
                       results.length > 0 &&
-                      results[0] == PackageManager.PERMISSION_GRANTED) {
+                      results[0] ==
+                      PackageManager.PERMISSION_GRANTED) {
+
                       running = true;
                       handler.post(blink);
                   }
