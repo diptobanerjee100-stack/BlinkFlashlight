@@ -1,0 +1,179 @@
+name: Build Blink Flashlight APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Create project
+        run: |
+          mkdir -p BlinkFlashlight/app/src/main/java/com/ark/blinkflashlight
+          mkdir -p BlinkFlashlight/app/src/main/res/drawable
+          mkdir -p BlinkFlashlight/app/src/main/res/values
+          mkdir -p BlinkFlashlight/.github/workflows
+
+          cat > BlinkFlashlight/settings.gradle <<'EOF'
+          pluginManagement {
+              repositories {
+                  google()
+                  mavenCentral()
+                  gradlePluginPortal()
+              }
+          }
+
+          dependencyResolutionManagement {
+              repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+              repositories {
+                  google()
+                  mavenCentral()
+              }
+          }
+
+          rootProject.name = "BlinkFlashlight"
+          include(":app")
+          EOF
+
+          cat > BlinkFlashlight/build.gradle <<'EOF'
+          plugins {
+              id 'com.android.application' version '8.5.2' apply false
+          }
+          EOF
+
+          cat > BlinkFlashlight/gradle.properties <<'EOF'
+          org.gradle.jvmargs=-Xmx2g -Dfile.encoding=UTF-8
+          EOF
+
+          cat > BlinkFlashlight/app/build.gradle <<'EOF'
+          plugins {
+              id 'com.android.application'
+          }
+
+          android {
+              namespace 'com.ark.blinkflashlight'
+              compileSdk 35
+
+              defaultConfig {
+                  applicationId 'com.ark.blinkflashlight'
+                  minSdk 23
+                  targetSdk 35
+                  versionCode 1
+                  versionName '1.0'
+              }
+          }
+          EOF
+
+          cat > BlinkFlashlight/app/src/main/AndroidManifest.xml <<'EOF'
+          <?xml version="1.0" encoding="utf-8"?>
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+              <uses-permission android:name="android.permission.CAMERA"/>
+              <uses-feature
+                  android:name="android.hardware.camera.flash"
+                  android:required="false"/>
+
+              <application
+                  android:theme="@android:style/Theme.Material.NoActionBar"
+                  android:label="Blink Flashlight">
+                  <activity
+                      android:name=".MainActivity"
+                      android:exported="true">
+                      <intent-filter>
+                          <action android:name="android.intent.action.MAIN"/>
+                          <category android:name="android.intent.category.LAUNCHER"/>
+                      </intent-filter>
+                  </activity>
+              </application>
+          </manifest>
+          EOF
+
+          cat > BlinkFlashlight/app/src/main/java/com/ark/blinkflashlight/MainActivity.java <<'EOF'
+          package com.ark.blinkflashlight;
+
+          import android.Manifest;
+          import android.app.Activity;
+          import android.content.Context;
+          import android.content.pm.PackageManager;
+          import android.graphics.Color;
+          import android.hardware.camera2.CameraAccessException;
+          import android.hardware.camera2.CameraCharacteristics;
+          import android.hardware.camera2.CameraManager;
+          import android.os.Bundle;
+          import android.os.Handler;
+          import android.os.Looper;
+          import android.view.Gravity;
+          import android.widget.Button;
+          import android.widget.LinearLayout;
+          import android.widget.SeekBar;
+          import android.widget.TextView;
+
+          public class MainActivity extends Activity {
+
+              private static final int REQUEST_CAMERA = 100;
+              private final Handler handler = new Handler(Looper.getMainLooper());
+
+              private CameraManager cameraManager;
+              private String cameraId;
+              private Button button;
+              private TextView status;
+              private TextView speed;
+              private boolean blinking = false;
+              private boolean torchOn = false;
+              private int interval = 500;
+
+              private final Runnable blink = new Runnable() {
+                  @Override public void run() {
+                      if (!blinking) return;
+                      setTorch(!torchOn);
+                      handler.postDelayed(this, interval);
+                  }
+              };
+
+              @Override
+              protected void onCreate(Bundle state) {
+                  super.onCreate(state);
+
+                  getWindow().setStatusBarColor(Color.rgb(10,10,11));
+                  getWindow().setNavigationBarColor(Color.rgb(10,10,11));
+
+                  cameraManager =
+                      (CameraManager)getSystemService(Context.CAMERA_SERVICE);
+
+                  LinearLayout root = new LinearLayout(this);
+                  root.setOrientation(LinearLayout.VERTICAL);
+                  root.setGravity(Gravity.CENTER);
+                  root.setPadding(40,40,40,40);
+                  root.setBackgroundColor(Color.rgb(10,10,11));
+
+                  TextView title = new TextView(this);
+                  title.setText("Blink");
+                  title.setTextColor(Color.WHITE);
+                  title.setTextSize(30);
+                  title.setGravity(Gravity.CENTER);
+
+                  status = new TextView(this);
+                  status.setText("Ready");
+                  status.setTextColor(Color.GRAY);
+                  status.setTextSize(15);
+                  status.setGravity(Gravity.CENTER);
+
+                  button = new Button(this);
+                  button.setText("START");
+                  button.setTextSize(16);
+                  button.setOnClickListener(v -> toggle());
+
+                  speed = new TextView(this);
+                  speed.setText("500 ms");
+                  speed.setTextColor(Color.LTGRAY);
+                  speed.setGravity(Gravity.CENTER);
+
+                  SeekBar bar = new SeekBar(this);
+                  bar.setMax(1400);
+                  bar.setProgress(400);
+                  bar.setOnSeekBarChangeListener(
+                      new SeekBar.OnSeekBarChangeListener() {
+                          public void on
